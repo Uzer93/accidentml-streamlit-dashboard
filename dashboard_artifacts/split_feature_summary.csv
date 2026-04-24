@@ -1,0 +1,25 @@
+Feature,Missing in X_train,dtype
+mois,0,float64
+jour,0,float64
+hour,0,float64
+lum,0,float64
+int,0,float64
+atm,0,float64
+col,0,float64
+catr,0,float64
+circ,0,float64
+nbv,0,float64
+vosp,0,float64
+surf,0,float64
+infra,0,float64
+situ,0,float64
+lat,0,float64
+long,0,float64
+place,0,float64
+catu,0,float64
+sexe,0,float64
+locp,0,float64
+actp,0,float64
+etatp,0,float64
+catv,0,float64
+victim_age,0,float64

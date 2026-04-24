@@ -1,0 +1,7 @@
+{
+  "train_rows": 832379,
+  "test_rows": 133387,
+  "feature_count": 24,
+  "y_train_rows": 832379,
+  "y_test_rows": 133387
+}
