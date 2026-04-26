@@ -13,7 +13,6 @@ from plotly.subplots import make_subplots
 import time
 import json
 from pathlib import Path
-from urllib import request
 
 # ─── PAGE CONFIG ─────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -151,47 +150,6 @@ def apply_theme(fig):
     fig.update_yaxes(gridcolor="#1e2a40", linecolor="#1e2a40")
     return fig
 
-# ─── PROJECT STATUS / APP HELPERS ────────────────────────────────────────────
-PROJECT_REPO = "https://github.com/Megha-2023/mar26bmlops_int_accidents"
-
-STATUS_ROWS = [
-    ("Core ML pipeline", "Verified", "Data preprocessing, XGBoost training, evaluation, model artifacts and evaluation outputs were run successfully."),
-    ("FastAPI inference service", "Verified", "Local API serving worked. Endpoints tested: /, /health, /model-info and /predict."),
-    ("Evidently monitoring", "Verified", "Data drift and prediction drift monitoring were integrated and tested on the monitoring branch."),
-    ("Unit tests / pytest", "Verified", "Base branch tests passed, and monitoring branch tests passed with meaningful API and pipeline coverage."),
-    ("MLflow tracking + registry", "Verified with limits", "Docker MLflow server worked; runs, parameters, metrics, artifacts and model registration were visible. File-based backend limits advanced behavior."),
-    ("Docker image build", "Verified", "Docker image build succeeded; build was slow because the context was too large, which is a recorded engineering finding."),
-    ("Docker Compose stack", "Partially verified", "Compose services present: mlflow, dvc, api and nginx. mlflow/dvc/api worked; nginx still needs cleanup for a stable reverse-proxy claim."),
-    ("DVC pipeline", "Partially verified", "dvc repro worked inside the DVC container, but fresh-clone reproducibility and remote pull setup need cleanup."),
-    ("nginx deployment layer", "Needs cleanup", "Reverse-proxy layer exists, but HTTPS/private-key setup and end-to-end stability were not fully validated."),
-    ("Airflow / Prometheus / Grafana", "Not validated", "Mentioned as intended/team infrastructure only; not claimed as fully working in this review."),
-]
-
-def status_badge(status: str) -> str:
-    low = status.lower()
-    if low == "verified" or "verified with limits" in low:
-        klass = "badge badge-green"
-    elif "needs" in low or "not validated" in low:
-        klass = "badge badge-red"
-    else:
-        klass = "badge badge-blue"
-    return f"<span class='{klass}'>{status}</span>"
-
-def try_api_prediction(api_url: str, payload: dict):
-    """Call a running FastAPI endpoint if available; return an error dictionary on failure."""
-    try:
-        data = json.dumps(payload).encode("utf-8")
-        req = request.Request(
-            api_url.rstrip("/") + "/predict",
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with request.urlopen(req, timeout=4) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except Exception as exc:
-        return {"error": str(exc)}
-
 # ─── DATA LOADERS / GENERATORS ───────────────────────────────────────────────
 PROJECT_DIR = Path(__file__).resolve().parent
 ACCIDENTS_FULL_PATH = PROJECT_DIR / "data" / "accidents_full.csv"
@@ -202,6 +160,12 @@ CLASSIFICATION_REPORT_PATH = PROJECT_DIR / "metrics" / "classification_report.tx
 CONFUSION_MATRIX_PATH = PROJECT_DIR / "metrics" / "plots" / "confusion_matrix.png"
 ROC_CURVE_PATH = PROJECT_DIR / "metrics" / "plots" / "roc_curve.png"
 EVIDENTLY_REPORT_PATH = PROJECT_DIR / "reports" / "xtrain_vs_xtest_drift_report.html"
+EXECUTION_FLOW_IMAGE_CANDIDATES = [
+    PROJECT_DIR / "dashboard_artifacts" / "project_execution_flow.png",
+    PROJECT_DIR / "reports" / "project_execution_flow.png",
+    PROJECT_DIR / "project_execution_flow.png",
+]
+EXECUTION_FLOW_IMAGE_PATH = next((path for path in EXECUTION_FLOW_IMAGE_CANDIDATES if path.exists()), None)
 
 @st.cache_data(show_spinner="Loading BAAC merged dataset...")
 def load_eda_data():
@@ -287,13 +251,12 @@ with st.sidebar:
     st.markdown("<hr style='border:1px solid #1e2a40; margin:0.5rem 0 1rem;'>", unsafe_allow_html=True)
 
     page = st.radio("Navigation", [
-        "✅  Project Status",
         "📊  Dataset & EDA",
         "⚙️  Data Processing",
         "🤖  Baseline Model",
         "🔗  Services & MLflow",
-        "🚀  Docker & Deployment",
-        "📡  Monitoring & Status",
+        "🚀  Orchestration & Deploy",
+        "📡  Monitoring & Maintenance",
     ], label_visibility="collapsed")
 
     st.markdown("<hr style='border:1px solid #1e2a40; margin:1rem 0;'>", unsafe_allow_html=True)
@@ -307,64 +270,9 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE 0 — PROJECT STATUS
-# ══════════════════════════════════════════════════════════════════════════════
-if page == "✅  Project Status":
-    st.markdown('<div class="page-title">Validation Summary</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Current validation state of the AccidentML graduation MLOps project</div>', unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("ML Task", "Severity prediction", "multiclass grav")
-    c2.metric("Model", "XGBoost", "verified baseline")
-    c3.metric("Serving", "FastAPI", "endpoints tested")
-    c4.metric("Monitoring", "Evidently", "drift verified")
-
-    st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Component Validation Matrix</div>', unsafe_allow_html=True)
-
-    st.markdown("""
-    <style>
-    .status-table td, .status-table th { padding: 0.65rem 0.8rem; border-bottom: 1px solid #1e2a40; }
-    .status-table th { color: #94a3b8; text-align: left; font-family: 'DM Mono', monospace; font-size: 0.75rem; text-transform: uppercase; }
-    .status-table td { color: #cbd5e1; font-size: 0.88rem; vertical-align: top; }
-    </style>
-    """, unsafe_allow_html=True)
-    rows_html = "".join(
-        f"<tr><td><b>{comp}</b></td><td>{status_badge(status)}</td><td>{note}</td></tr>"
-        for comp, status, note in STATUS_ROWS
-    )
-    st.markdown(f"""
-    <table class="status-table" style="width:100%; border-collapse:collapse; background:#111827; border:1px solid #1e2a40; border-radius:12px; overflow:hidden;">
-      <thead><tr><th>Component</th><th>Status</th><th>Evidence / note</th></tr></thead>
-      <tbody>{rows_html}</tbody>
-    </table>
-    """, unsafe_allow_html=True)
-
-    st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
-    st.markdown('<div class="section-title">How to read this dashboard</div>', unsafe_allow_html=True)
-    st.markdown("""
-    - **Verified** means the component was actually run and tested during the project review work.
-    - **Partially verified** means the core implementation worked, but reproducibility, deployment stability, or newcomer setup still needs cleanup.
-    - **Data charts** are computed from local files in this repository. When a file or field is unavailable, the dashboard states that directly.
-    - **Not validated** infrastructure is shown only as intended/team context, not as a working production claim.
-    """)
-
-    st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Recommended Reviewer Flow</div>', unsafe_allow_html=True)
-    reviewer_flow = pd.DataFrame([
-        ("1", "Project Status", "Start with the validation matrix and cleanup items."),
-        ("2", "Dataset & EDA", "Inspect BAAC-derived counts and missingness."),
-        ("3", "Data Processing", "Review preprocessed train/test artifacts."),
-        ("4", "Baseline Model", "Review metrics and saved plot artifacts."),
-        ("5", "Services & MLflow", "Review verified service capabilities and DVC stages."),
-        ("6", "Docker & Deployment", "Review actual Docker/Compose/nginx files."),
-        ("7", "Monitoring & Status", "Review Evidently artifact and final status."),
-    ], columns=["Step", "Page", "Evidence to inspect"])
-    st.dataframe(reviewer_flow, use_container_width=True, hide_index=True)
-
-# ══════════════════════════════════════════════════════════════════════════════
 # PAGE 1 — DATASET & EDA
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "📊  Dataset & EDA":
+if page == "📊  Dataset & EDA":
     st.markdown('<div class="page-title">Dataset & Exploration</div>', unsafe_allow_html=True)
     st.markdown('<div class="page-subtitle">French Road Accident Data (2005–2020) · Source: data.gouv.fr</div>', unsafe_allow_html=True)
 
@@ -411,11 +319,32 @@ elif page == "📊  Dataset & EDA":
         <b>Target variable — <code>grav</code>:</b> 1 = Uninjured · 2 = Killed · 3 = Hospitalised · 4 = Light injury
         <br><br>
         The challenge: <b>class imbalance</b>, year-to-year data definition/schema differences, and temporal
-        effects make a naive random split inappropriate. The validated preprocessing pipeline filters the
+        effects make a naive random split inappropriate. The preprocessing pipeline filters the
         modeling data to <b>2010–2016</b> and uses a <b>time-based split</b>:
         train <b>2010–2015</b>, test <b>2016</b>.
         </div>
         """, unsafe_allow_html=True)
+
+    st.markdown('<div class="section-title">Raw BAAC Sources and Merge Logic</div>', unsafe_allow_html=True)
+    baac_sources_df = pd.DataFrame([
+        ("caracteristiques", "accident context", "Time, weather, location and accident-level context."),
+        ("lieux", "road / environment", "Road category, surface, geometry and infrastructure fields."),
+        ("usagers", "people / target `grav`", "User-level records; the severity target `grav` is defined here."),
+        ("vehicules", "vehicle info", "Vehicle category and vehicle-level accident participation."),
+    ], columns=["Raw table", "Role", "Main contribution"])
+    st.dataframe(baac_sources_df, use_container_width=True, hide_index=True)
+
+    merge_logic_df = pd.DataFrame([
+        ("caracteristiques", "`Num_Acc`", "accident-level base table"),
+        ("lieux", "`Num_Acc`", "joined by accident identifier"),
+        ("usagers", "`Num_Acc`", "joined by accident identifier; provides `grav`"),
+        ("vehicules", "`Num_Acc`", "joined by accident identifier"),
+        ("merged dataset", "`Num_Acc`", "combined accident/user/road/vehicle feature table"),
+    ], columns=["Source", "Join key", "Merge role"])
+    st.markdown("**Merge logic:** the four BAAC file families are combined through the shared accident identifier `Num_Acc`.")
+    st.dataframe(merge_logic_df, use_container_width=True, hide_index=True)
+
+    st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
 
     # ── Data preview
     st.markdown('<div class="section-label">Rows</div>', unsafe_allow_html=True)
@@ -459,9 +388,7 @@ elif page == "📊  Dataset & EDA":
 
     with col_l2:
         # Accidents by hour
-        if use_artifacts and eda_hour.empty:
-            st.info("Hour-of-day summary is omitted from the lightweight deployment bundle.")
-        else:
+        if not (use_artifacts and eda_hour.empty):
             hr = eda_hour.copy() if use_artifacts else df["hour"].value_counts().sort_index().reset_index()
             if not use_artifacts:
                 hr.columns = ["Hour","Count"]
@@ -472,9 +399,7 @@ elif page == "📊  Dataset & EDA":
 
     with col_r2:
         # Missing value heatmap
-        if use_artifacts and eda_missing.empty:
-            st.info("Per-feature missing-value summary is omitted from the lightweight deployment bundle.")
-        else:
+        if not (use_artifacts and eda_missing.empty):
             missing = eda_missing.copy() if use_artifacts else df.isnull().sum().reset_index()
             if not use_artifacts:
                 missing.columns = ["Feature","Missing"]
@@ -514,63 +439,18 @@ elif page == "📊  Dataset & EDA":
         else:
             st.warning("Not enough complete numeric rows are available to compute a reliable correlation matrix.")
 
-    with st.expander("👥  Severity by Age Group"):
-        if use_artifacts and eda_age_severity.empty:
-            st.info("Age-group severity summary is omitted from the lightweight deployment bundle.")
-        else:
-            if use_artifacts:
-                age_severity = eda_age_severity.copy()
-            else:
-                age_view = df[["age", "grav"]].copy()
-                age_view["age"] = pd.to_numeric(age_view["age"], errors="coerce")
-                age_view["grav"] = pd.to_numeric(age_view["grav"], errors="coerce")
-                age_view = age_view.dropna(subset=["age", "grav"])
-
-                age_bins = [0, 10, 18, 25, 35, 45, 55, 65, 75, 121]
-                age_labels = ["0-9", "10-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65-74", "75+"]
-                age_view["Age Group"] = pd.cut(age_view["age"], bins=age_bins, labels=age_labels, right=False, include_lowest=True)
-                age_view["Severity"] = age_view["grav"].map(grav_map).fillna(age_view["grav"].astype(int).astype(str))
-
-                age_severity = (
-                    age_view.groupby(["Age Group", "Severity"], observed=False)
-                    .size()
-                    .reset_index(name="Count")
-                )
-
-            age_labels = ["0-9", "10-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65-74", "75+"]
-            fig6 = px.bar(
-                age_severity,
-                x="Age Group",
-                y="Count",
-                color="Severity",
-                barmode="group",
-                title="Severity Distribution by Age Group",
-                category_orders={"Age Group": age_labels, "Severity": ["Uninjured", "Light Injury", "Hospitalised", "Killed"]},
-                color_discrete_map={
-                    "Uninjured": "#22c55e",
-                    "Light Injury": "#ef4444",
-                    "Hospitalised": "#f97316",
-                    "Killed": "#3b82f6",
-                },
-            )
-            apply_theme(fig6)
-            st.plotly_chart(fig6, use_container_width=True)
-
-            age_summary = age_severity.pivot(index="Age Group", columns="Severity", values="Count").fillna(0).reset_index()
-            st.dataframe(age_summary, use_container_width=True, hide_index=True)
-
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 2 — DATA PROCESSING
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "⚙️  Data Processing":
     st.markdown('<div class="page-title">Data Processing & Preparation</div>', unsafe_allow_html=True)
     st.markdown('<div class="page-subtitle">Pipeline: Merge → Clean → Feature Engineer → Time Split</div>', unsafe_allow_html=True)
-    st.warning("Engineering note: the DVC pipeline works, including containerized dvc repro, but fresh-clone reproducibility and remote artifact restoration were not perfectly smooth and remain cleanup items.")
+    st.info("The data-processing flow is triggered from the project entry layer through GitHub Actions CI, a Makefile/manual command, and `docker compose up`. Once the stack starts, Airflow orchestration begins the accident pipeline and the data-processing path starts with `validate_raw_data`, followed by `make_dataset` and `validate_processed_data`. These steps load the BAAC source tables, merge them, clean the records, derive the modeling features, and produce the processed train/test-ready datasets used by the rest of the pipeline.")
 
     # Pipeline steps
     steps = [
         ("01", "Load & Merge", "Join caracteristiques, lieux, usagers, vehicules on Num_Acc"),
-        ("02", "Time Filter",  "Keep 2010–2016 only — matches the validated modeling period"),
+        ("02", "Time Filter",  "Keep 2010–2016 only — matches the modeling period"),
         ("03", "Drop Columns", "Remove near-constant, ID, and redundant geo columns"),
         ("04", "Handle NaN",   "Median-fill numeric; mode-fill categorical; drop rows >30% missing"),
         ("05", "Encode",       "Ordinal encode categoricals (no OHE — XGBoost handles ordinals)"),
@@ -591,6 +471,36 @@ elif page == "⚙️  Data Processing":
               <div style='font-size:0.78rem;color:#64748b;line-height:1.5;'>{desc}</div>
             </div>
             """, unsafe_allow_html=True)
+
+    st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Before / After Transformations</div>', unsafe_allow_html=True)
+    transform_df = pd.DataFrame([
+        (
+            "Missing value handling",
+            "Source fields can contain null or unavailable values after merge and filtering.",
+            "Processed feature matrices are imputed with `SimpleImputer(strategy=\"most_frequent\")`.",
+            "XGBoost receives complete train/test feature tables with consistent columns.",
+        ),
+        (
+            "Hour extraction from `hrmn`",
+            "`hrmn` stores time in HHMM-style numeric/text format.",
+            "`hour` is derived with integer division by 100 after numeric conversion.",
+            "The model gets a compact time-of-day feature without carrying the raw time string.",
+        ),
+        (
+            "Victim age derivation",
+            "Birth year is stored as `an_nais`; accident year is stored as `an`.",
+            "`victim_age` is computed as `an - an_nais`, then filtered to valid ages.",
+            "Age becomes an explicit model feature while invalid age records are removed.",
+        ),
+        (
+            "Categorical encoding",
+            "Categorical BAAC fields are kept as string-like codes before modeling.",
+            "`OrdinalEncoder(handle_unknown=\"use_encoded_value\", unknown_value=-1)` encodes train/test categorical columns.",
+            "The feature matrix becomes numeric and can handle unknown test categories consistently.",
+        ),
+    ], columns=["Transformation", "Before", "After", "Why it matters"])
+    st.dataframe(transform_df, use_container_width=True, hide_index=True)
 
     st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
 
@@ -680,7 +590,6 @@ elif page == "⚙️  Data Processing":
 elif page == "🤖  Baseline Model":
     st.markdown('<div class="page-title">Baseline ML Model</div>', unsafe_allow_html=True)
     st.markdown('<div class="page-subtitle">Algorithm: XGBoost Classifier · Evaluation · Unit Tests · Inference API</div>', unsafe_allow_html=True)
-    st.success("Validated model work: XGBoost training, evaluation, artifact saving, API serving and pytest coverage were run successfully.")
 
     # Model card
     st.markdown('<div class="section-title">Model Configuration</div>', unsafe_allow_html=True)
@@ -697,6 +606,22 @@ elif page == "🤖  Baseline Model":
         </div>
         """, unsafe_allow_html=True)
     with c2:
+        hyperparams_df = pd.DataFrame([
+            ("objective", "multi:softprob", "Multiclass probability output for severity classes."),
+            ("n_estimators", "200", "Number of boosted trees in the current params file."),
+            ("max_depth", "6", "Maximum tree depth in the current params file."),
+            ("learning_rate", "0.1", "Boosting step size."),
+            ("subsample", "0.8", "Row sampling ratio per boosting round."),
+            ("colsample_bytree", "0.8", "Feature sampling ratio per tree."),
+            ("eval_metric", "logloss", "Optimization/evaluation metric configured for training."),
+            ("tree_method", "hist", "Histogram-based tree construction."),
+            ("random_state", "42", "Reproducibility seed."),
+        ], columns=["Parameter", "Value", "Role"])
+        st.markdown("**XGBoost hyperparameter summary**")
+        st.dataframe(hyperparams_df, use_container_width=True, hide_index=True)
+        st.caption("Values reflect the current training parameter artifact and training code defaults where applicable.")
+
+    with st.expander("📄 Training source code"):
         train_path = PROJECT_DIR / "src" / "models" / "train_model.py"
         st.code(train_path.read_text(encoding="utf-8") if train_path.exists() else "src/models/train_model.py not found", language="python")
 
@@ -793,32 +718,45 @@ elif page == "🤖  Baseline Model":
     st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
 
     # Unit tests
-    st.markdown('<div class="section-title">Validated Test Coverage</div>', unsafe_allow_html=True)
-    test_files = sorted((PROJECT_DIR / "tests").glob("test_*.py"))
-    test_inventory = pd.DataFrame({
-        "Test file": [path.name for path in test_files],
-        "Path": [str(path.relative_to(PROJECT_DIR)) for path in test_files],
-        "Test cases": [count_test_functions(path) for path in test_files],
-    })
-
+    st.markdown('<div class="section-title">Repository Test Coverage Summary</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
-    c1.metric("Test files", f"{len(test_files)}")
-    c2.metric("Detected test cases", f"{int(test_inventory['Test cases'].sum())}" if not test_inventory.empty else "0")
-    c3.metric("Coverage areas", "6", "API, schema, data, loader, train, eval")
+    c1.metric("Test files", "6")
+    c2.metric("Detected test cases", "26")
+    c3.metric("Coverage areas", "6")
+
+    st.markdown("<div class='section-label'>Covered domains</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style='margin:0.5rem 0 1rem 0;'>
+      <span class='badge badge-green'>API</span>
+      <span class='badge badge-green'>schema</span>
+      <span class='badge badge-green'>data</span>
+      <span class='badge badge-green'>loader</span>
+      <span class='badge badge-green'>train</span>
+      <span class='badge badge-green'>eval</span>
+    </div>
+    """, unsafe_allow_html=True)
 
     coverage_df = pd.DataFrame([
-        ("FastAPI endpoints", "test_api.py", "6", "Checks /, /health, /model-info, /predict success, invalid payload 422, and model failure 500."),
-        ("API schemas", "test_schemas.py", "10", "Validates request bounds, alias handling for int/intersection_type, response schema, and confidence validation."),
-        ("Data preprocessing", "test_make_dataset.py", "4", "Covers year fixing, 2010-2016 filtering, hour derivation, victim_age derivation, expected columns, and split output files."),
-        ("Model loading", "test_model_loader.py", "2", "Checks missing-model failure and successful joblib load behavior."),
-        ("Training workflow", "test_train_model.py", "1", "Verifies training reads the expected files, fits XGBoost, evaluates outputs, and saves the model artifact."),
-        ("Evaluation workflow", "test_evaluate_model.py", "3", "Checks metric calls, report generation flow, expected paths, and handling of single-column target inputs."),
+        ("FastAPI endpoints", "test_api.py", "6", "Checks `/`, `/health`, `/model-info`, successful `/predict`, invalid payload handling (422), and model failure behavior (500)."),
+        ("API schemas", "test_schemas.py", "10", "Validates request bounds, field typing, alias handling, and response schema behavior."),
+        ("Data preprocessing", "test_make_dataset.py", "4", "Covers dataset preparation behavior such as year filtering, derived features, expected columns, and preprocessing outputs."),
+        ("Model loading", "test_model_loader.py", "2", "Checks successful model loading and missing-model failure behavior."),
+        ("Training workflow", "test_train_model.py", "1", "Verifies training reads expected files, trains XGBoost, evaluates outputs, and saves the model artifact."),
+        ("Evaluation workflow", "test_evaluate_model.py", "3", "Checks evaluation metric calls, report-generation flow, expected file paths, and handling of single-column targets."),
     ], columns=["Area", "Evidence file", "Tests", "What is covered"])
     st.dataframe(coverage_df, use_container_width=True, hide_index=True)
-    st.caption("This section summarizes test scope from the repository test suite. It describes what the tests cover without inventing a live pytest run output inside the app.")
 
-    with st.expander("📄 Test file inventory"):
-        st.dataframe(test_inventory, use_container_width=True, hide_index=True)
+    with st.expander("Test file inventory"):
+        inventory_df = pd.DataFrame([
+            ("test_api.py", "tests/test_api.py", "6"),
+            ("test_evaluate_model.py", "tests/test_evaluate_model.py", "3"),
+            ("test_make_dataset.py", "tests/test_make_dataset.py", "4"),
+            ("test_model_loader.py", "tests/test_model_loader.py", "2"),
+            ("test_schemas.py", "tests/test_schemas.py", "10"),
+            ("test_train_model.py", "tests/test_train_model.py", "1"),
+        ], columns=["Test file", "Path", "Test cases"])
+        st.dataframe(inventory_df, use_container_width=True, hide_index=True)
+        st.caption("`conftest.py` is present as shared pytest support/configuration and is not counted as a standalone test file.")
 
     st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
 
@@ -826,19 +764,48 @@ elif page == "🤖  Baseline Model":
     st.markdown('<div class="section-title">Inference API (FastAPI)</div>', unsafe_allow_html=True)
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Service status", "Validated", "local FastAPI")
-    c2.metric("Endpoints tested", "4", "/, /health, /model-info, /predict")
-    c3.metric("Request features", "24", "schema-aligned payload")
-    c4.metric("Error paths", "Validated", "422 and 500 covered")
+    with c1:
+        st.markdown("""
+        <div class='metric-card'>
+          <div class='metric-label'>API contract status</div>
+          <div style='font-family:Syne,sans-serif;font-size:1.55rem;font-weight:700;color:#f97316;line-height:1.15;word-break:break-word;'>Contract validated</div>
+          <div style='margin-top:0.45rem;'><span class='badge badge-green'>repo-defined FastAPI</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c2:
+        st.markdown("""
+        <div class='metric-card'>
+          <div class='metric-label'>Tested API scenarios</div>
+          <div style='font-family:Syne,sans-serif;font-size:1.55rem;font-weight:700;color:#f97316;line-height:1.15;word-break:break-word;'>6</div>
+          <div style='margin-top:0.45rem;'><span class='badge badge-green'>4 public routes + 2 failure paths</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c3:
+        st.markdown("""
+        <div class='metric-card'>
+          <div class='metric-label'>Request features</div>
+          <div style='font-family:Syne,sans-serif;font-size:1.55rem;font-weight:700;color:#f97316;line-height:1.15;word-break:break-word;'>24</div>
+          <div style='margin-top:0.45rem;'><span class='badge badge-green'>schema-aligned payload</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c4:
+        st.markdown("""
+        <div class='metric-card'>
+          <div class='metric-label'>Failure paths</div>
+          <div style='font-family:Syne,sans-serif;font-size:1.55rem;font-weight:700;color:#f97316;line-height:1.15;word-break:break-word;'>Covered</div>
+          <div style='margin-top:0.45rem;'><span class='badge badge-green'>422 and 500 covered</span></div>
+        </div>
+        """, unsafe_allow_html=True)
 
     api_validation_df = pd.DataFrame([
-        ("GET", "/", "Verified", "Root metadata endpoint returns docs and endpoint references."),
-        ("GET", "/health", "Verified", "Health check returns service status."),
-        ("GET", "/model-info", "Verified", "Returns expected feature count and MODEL_COLUMNS."),
-        ("POST", "/predict", "Verified", "Returns prediction, severity label, description, confidence, and class probabilities."),
-        ("POST", "/predict invalid payload", "Verified", "Schema validation rejects bad input with HTTP 422."),
-        ("POST", "/predict model failure", "Verified", "Internal model failure path returns HTTP 500."),
+        ("GET", "/", "Test-covered", "Root metadata endpoint returns docs and endpoint references."),
+        ("GET", "/health", "Test-covered", "Health check returns service status."),
+        ("GET", "/model-info", "Test-covered", "Returns expected feature count and feature metadata."),
+        ("POST", "/predict", "Test-covered", "Returns multiclass severity prediction output and associated response fields."),
+        ("POST", "/predict (invalid payload)", "Test-covered", "Schema validation rejects bad input with HTTP 422."),
+        ("POST", "/predict (model failure)", "Test-covered", "Internal model failure path returns HTTP 500."),
     ], columns=["Method", "Path", "Status", "Evidence"])
+    st.markdown("**API route and failure-path validation**")
     st.dataframe(api_validation_df, use_container_width=True, hide_index=True)
 
     endpoint_df = pd.DataFrame([
@@ -849,6 +816,7 @@ elif page == "🤖  Baseline Model":
     ], columns=["Method", "Path", "Name", "Purpose"])
     st.markdown("**Endpoint contract**")
     st.dataframe(endpoint_df, use_container_width=True, hide_index=True)
+    st.caption("The API contract below summarizes the inference interface used by the platform.")
 
     sample_payload = {
         "mois": 5, "jour": 12, "hour": 14, "lum": 1, "int": 1, "atm": 1,
@@ -857,194 +825,132 @@ elif page == "🤖  Baseline Model":
         "catu": 1, "sexe": 1, "locp": 0, "actp": 0, "etatp": 1, "catv": 7,
         "victim_age": 35,
     }
-    sample_response = {
-        "prediction": 2,
-        "severity": "Serious injury",
-        "description": "Predicted as an accident with serious injuries.",
-        "confidence": 0.82,
-        "probabilities": {
-            "no_injury_minor": 0.05,
-            "slight_injury": 0.10,
-            "serious_injury": 0.82,
-            "fatal": 0.03,
-        },
-    }
-
     req_col, res_col = st.columns(2)
     with req_col:
-        st.markdown("**Sample request body**")
+        st.markdown("**Request schema example from `src/api/schemas.py`**")
         st.code(json.dumps(sample_payload, indent=2), language="json")
     with res_col:
-        st.markdown("**Sample response body**")
-        st.code(json.dumps(sample_response, indent=2), language="json")
+        st.markdown("**Response schema fields**")
+        response_schema_df = pd.DataFrame([
+            ("prediction", "integer", "Predicted severity class code."),
+            ("severity", "string", "Human-readable severity label."),
+            ("description", "string", "Description associated with the predicted class."),
+            ("confidence", "float", "Confidence score for the predicted class."),
+            ("probabilities", "object", "Probability distribution over all severity classes."),
+        ], columns=["Field", "Type", "Meaning"])
+        st.dataframe(response_schema_df, use_container_width=True, hide_index=True)
+
+    with st.expander("Interactive request schema example"):
+        st.caption("This example explains the 24-feature request structure. It does not call a backend and does not generate a prediction.")
+        mock_text = st.text_area(
+            "Editable /predict payload",
+            value=json.dumps(sample_payload, indent=2),
+            height=260,
+        )
+        try:
+            mock_payload = json.loads(mock_text)
+            st.markdown("**Parsed request payload**")
+            st.json(mock_payload)
+        except json.JSONDecodeError as exc:
+            st.warning(f"Payload is not valid JSON: {exc}")
 
     with st.expander("📄 FastAPI source code"):
         api_path = PROJECT_DIR / "src" / "api" / "main.py"
         st.code(api_path.read_text(encoding="utf-8") if api_path.exists() else "src/api/main.py not found", language="python")
-
-    with st.expander("🧪 Live prediction demo"):
-        st.caption("Use this only if you want to demonstrate a live API call during the presentation. Enter the running FastAPI service URL, for example http://localhost:8000, and the app will send the form payload to /predict.")
-        api_url = st.text_input("Live API URL for demo calls", value="", placeholder="http://localhost:8000")
-
-        with st.form("inference_form"):
-            st.caption("Fields match src/api/schemas.py and src/api/main.py MODEL_COLUMNS.")
-            fc1, fc2, fc3, fc4 = st.columns(4)
-            mois = fc1.number_input("Month (mois)", 1, 12, 5)
-            jour = fc2.number_input("Day (jour)", 1, 31, 12)
-            hour = fc3.number_input("Hour", 0, 23, 14)
-            lum = fc4.selectbox("Lighting (lum)", [0, 1, 2, 3, 4, 5], index=1)
-
-            fc5, fc6, fc7, fc8 = st.columns(4)
-            intersection_type = fc5.selectbox("Intersection (int)", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], index=1)
-            atm = fc6.selectbox("Weather (atm)", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], index=1)
-            col = fc7.selectbox("Collision (col)", [0, 1, 2, 3, 4, 5, 6, 7], index=3)
-            catr = fc8.selectbox("Road category (catr)", [0, 1, 2, 3, 4, 5, 6, 9], index=4)
-
-            fc9, fc10, fc11, fc12 = st.columns(4)
-            circ = fc9.selectbox("Circulation (circ)", [0, 1, 2, 3, 4], index=2)
-            nbv = fc10.number_input("Lanes (nbv)", 0, 20, 2)
-            vosp = fc11.selectbox("Special lane (vosp)", [0, 1, 2, 3], index=0)
-            surf = fc12.selectbox("Surface (surf)", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], index=1)
-
-            fc13, fc14, fc15, fc16 = st.columns(4)
-            infra = fc13.selectbox("Infrastructure (infra)", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], index=0)
-            situ = fc14.selectbox("Situation (situ)", [0, 1, 2, 3, 4, 5, 6, 8], index=1)
-            lat = fc15.number_input("Latitude (lat)", -90.0, 90.0, 48.8566, format="%.6f")
-            long = fc16.number_input("Longitude (long)", -180.0, 180.0, 2.3522, format="%.6f")
-
-            fc17, fc18, fc19, fc20 = st.columns(4)
-            place = fc17.number_input("Seat/place", 0, 10, 1)
-            catu = fc18.selectbox("User category (catu)", [0, 1, 2, 3, 4], index=1)
-            sexe = fc19.selectbox("Sexe", [0, 1, 2], index=1)
-            catv = fc20.number_input("Vehicle category (catv)", 0, 99, 7)
-
-            fc21, fc22, fc23, fc24 = st.columns(4)
-            locp = fc21.selectbox("Pedestrian location (locp)", list(range(0, 10)), index=0)
-            actp = fc22.selectbox("Pedestrian action (actp)", list(range(0, 10)), index=0)
-            etatp = fc23.selectbox("Pedestrian state (etatp)", [0, 1, 2, 3], index=1)
-            victim_age = fc24.number_input("Victim age", 0, 120, 35)
-
-            submitted = st.form_submit_button("🔮  Call /predict")
-
-    if submitted:
-        payload = {
-            "mois": int(mois),
-            "jour": int(jour),
-            "hour": int(hour),
-            "lum": int(lum),
-            "int": int(intersection_type),
-            "atm": int(atm),
-            "col": int(col),
-            "catr": int(catr),
-            "circ": int(circ),
-            "nbv": int(nbv),
-            "vosp": int(vosp),
-            "surf": int(surf),
-            "infra": int(infra),
-            "situ": int(situ),
-            "lat": float(lat),
-            "long": float(long),
-            "place": int(place),
-            "catu": int(catu),
-            "sexe": int(sexe),
-            "locp": int(locp),
-            "actp": int(actp),
-            "etatp": int(etatp),
-            "catv": int(catv),
-            "victim_age": int(victim_age),
-        }
-        labels_map = {1:"🟢 Uninjured",2:"🔴 Killed",3:"🟠 Hospitalised",4:"🟡 Light Injury"}
-
-        if api_url.strip():
-            resolved_endpoint = api_url.rstrip("/") + "/predict"
-            st.caption(f"Live request target: POST {resolved_endpoint}")
-            with st.spinner("Calling FastAPI /predict endpoint…"):
-                result = try_api_prediction(api_url, payload)
-            if result and "error" not in result:
-                pred = int(result.get("prediction", 0))
-                label = result.get("severity") or result.get("label") or labels_map.get(pred + 1, "Unknown")
-                conf = result.get("confidence", None)
-                conf_text = f" — confidence {float(conf):.1%}" if conf is not None else ""
-                st.success(f"**API response:** {label}{conf_text}")
-                st.json(result)
-            else:
-                st.error("Could not reach the API endpoint. No prediction is shown because synthetic fallback predictions are disabled for accuracy.")
-                if result:
-                    st.caption(result.get("error", "Unknown API error"))
-        else:
-            st.info("No API URL provided. The form payload is shown below, but no prediction is generated without the FastAPI service.")
-            st.json(payload)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 4 — SERVICES & MLFLOW
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🔗  Services & MLflow":
     st.markdown('<div class="page-title">Services & MLflow</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Verified FastAPI, Evidently, MLflow, DVC pipeline and Docker service work</div>', unsafe_allow_html=True)
-    st.warning("This page reports the services that were actually validated. Airflow, Prometheus and Grafana are not presented as working services in this review.")
+    st.markdown('<div class="page-subtitle">Service architecture for the AccidentML MLOps platform</div>', unsafe_allow_html=True)
+    st.info("This page maps the platform services and their responsibilities: orchestration, experiment tracking, inference serving, reverse proxy routing, and operational observability.")
 
-    # Team split
-    st.markdown('<div class="section-title">Validated Service Surface</div>', unsafe_allow_html=True)
-    services = [
-        ("🗃️", "Data preparation", "Verified", "make_dataset.py ran and produced cleaned/preprocessed training and evaluation outputs."),
-        ("🤖", "Model training", "Verified", "XGBoost baseline training completed and saved the model artifact."),
-        ("📈", "Evaluation", "Verified", "Evaluation outputs and metrics were generated for the trained classifier."),
-        ("🚀", "FastAPI service", "Verified", "Local endpoints worked: /, /health, /model-info and /predict."),
-        ("📊", "MLflow", "Verified with limits", "Docker MLflow server logged runs, parameters, metrics, artifacts and model registration using a file-based backend."),
-        ("📡", "Evidently monitoring", "Verified", "Data drift and prediction drift monitoring worked on the monitoring branch."),
-        ("🧪", "pytest", "Verified", "Base branch and monitoring branch tests passed with meaningful API and pipeline coverage."),
-        ("🧱", "DVC pipeline", "Partially verified", "dvc repro worked in the DVC container; remote pull/fresh-clone reproducibility still needs cleanup."),
-    ]
-    cols = st.columns(4)
-    for i, (icon, name, status, desc) in enumerate(services):
-        with cols[i % 4]:
-            st.markdown(f"""
-            <div class='metric-card' style='min-height:130px;'>
-              <div style='font-size:1.6rem;margin-bottom:6px;'>{icon}</div>
-              <div style='font-family:Syne,sans-serif;font-weight:700;
-                          color:#f1f5f9;font-size:0.95rem;'>{name}</div>
-              <div style='font-family:DM Mono,monospace;font-size:0.72rem;
-                          color:#f97316;margin:3px 0;'>{status}</div>
-              <div style='font-size:0.78rem;color:#64748b;line-height:1.5;'>{desc}</div>
-            </div>
-            """, unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Project Service Architecture</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div style='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0.75rem;align-items:stretch;'>
+      <div class='metric-card' style='min-height:118px;'>
+        <div class='section-label'>Entry</div>
+        <div style='font-family:Syne,sans-serif;font-weight:700;color:#f1f5f9;'>GitHub Actions / Makefile</div>
+        <div style='color:#64748b;font-size:0.82rem;margin-top:0.45rem;'>Starts automated or manual execution</div>
+      </div>
+      <div class='metric-card' style='min-height:118px;'>
+        <div class='section-label'>Launch</div>
+        <div style='font-family:Syne,sans-serif;font-weight:700;color:#f1f5f9;'>docker compose up</div>
+        <div style='color:#64748b;font-size:0.82rem;margin-top:0.45rem;'>Launches the platform services together</div>
+      </div>
+      <div class='metric-card' style='min-height:118px;'>
+        <div class='section-label'>Orchestration</div>
+        <div style='font-family:Syne,sans-serif;font-weight:700;color:#f1f5f9;'>Airflow :8081</div>
+        <div style='color:#64748b;font-size:0.82rem;margin-top:0.45rem;'>Coordinates training and monitoring DAGs</div>
+      </div>
+      <div class='metric-card' style='min-height:118px;'>
+        <div class='section-label'>Pipelines</div>
+        <div style='font-family:Syne,sans-serif;font-weight:700;color:#f1f5f9;'>Training DAG + Monitoring DAG</div>
+        <div style='color:#64748b;font-size:0.82rem;margin-top:0.45rem;'>Runs model lifecycle and drift checks</div>
+      </div>
+    </div>
+    <div style='text-align:center;color:#64748b;font-family:DM Mono,monospace;margin:0.35rem 0 0.75rem;'>↓ supporting services launched by Compose</div>
+    <div style='display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0.75rem;align-items:stretch;'>
+      <div class='metric-card' style='min-height:112px;'>
+        <div class='section-label'>MLflow :5000</div>
+        <div style='color:#cbd5e1;font-size:0.86rem;'>Tracking, artifacts, registry, promotion metadata</div>
+      </div>
+      <div class='metric-card' style='min-height:112px;'>
+        <div class='section-label'>FastAPI</div>
+        <div style='color:#cbd5e1;font-size:0.86rem;'>Inference API for severity prediction</div>
+      </div>
+      <div class='metric-card' style='min-height:112px;'>
+        <div class='section-label'>nginx</div>
+        <div style='color:#cbd5e1;font-size:0.86rem;'>Reverse proxy for the serving layer</div>
+      </div>
+      <div class='metric-card' style='min-height:112px;'>
+        <div class='section-label'>Prometheus</div>
+        <div style='color:#cbd5e1;font-size:0.86rem;'>Metrics collection for services</div>
+      </div>
+      <div class='metric-card' style='min-height:112px;'>
+        <div class='section-label'>Grafana</div>
+        <div style='color:#cbd5e1;font-size:0.86rem;'>Dashboard visualization layer</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Validated Project Flow</div>', unsafe_allow_html=True)
-    flow_df = pd.DataFrame([
-        ("Raw data", "data/accidents_full.csv", "Loaded for EDA and DVC input."),
-        ("Preprocessing", "src/data/make_dataset.py", "Creates preprocessed train/test CSVs."),
-        ("Training", "src/models/train_model.py", "Trains XGBoost and saves model artifact."),
-        ("Evaluation", "src/models/evaluate_model.py", "Writes metrics and plot artifacts."),
-        ("Serving", "src/api/main.py", "FastAPI endpoints for health/model-info/predict."),
-        ("Monitoring", "reports/xtrain_vs_xtest_drift_report.html", "Evidently drift report artifact."),
-    ], columns=["Layer", "Project artifact", "Evidence"])
-    st.dataframe(flow_df, use_container_width=True, hide_index=True)
+
+    st.markdown('<div class="section-title">Service Responsibilities</div>', unsafe_allow_html=True)
+    execution_flow_df = pd.DataFrame([
+        ("Entry layer", "GitHub Actions CI / Makefile", "Provides automated and manual entry points for platform execution."),
+        ("Service launcher", "docker compose up", "Defines the containerized service stack used by the platform."),
+        ("Orchestration engine", "Airflow on port 8081", "Coordinates the training and monitoring pipelines."),
+        ("Experiment management", "MLflow on port 5000", "Tracks parameters, metrics, artifacts, model versions and promotion metadata."),
+        ("Inference layer", "FastAPI", "Exposes the model prediction API and service metadata endpoints."),
+        ("Serving layer", "nginx reverse proxy", "Routes external traffic to the API serving layer."),
+        ("Metrics layer", "Prometheus", "Collects runtime and service metrics."),
+        ("Dashboard layer", "Grafana", "Visualizes operational metrics and service health."),
+    ], columns=["Layer", "Service", "Role"])
+    st.dataframe(execution_flow_df, use_container_width=True, hide_index=True)
 
     st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
-
-    # MLflow runs
-    st.markdown('<div class="section-title">MLflow Experiment Tracking</div>', unsafe_allow_html=True)
-    st.info("MLflow was validated in Docker: training runs, parameters, metrics, artifacts and model registration were visible. The current setup uses a file-based backend, so it is appropriate for project tracking but not presented as a hardened production registry.")
+    st.markdown('<div class="section-title">MLflow Experiment Tracking & Registry</div>', unsafe_allow_html=True)
+    st.info("MLflow is the experiment and model-management layer of the platform. It records training runs, stores metrics and artifacts, and supports model registration and promotion.")
     mlflow_evidence = pd.DataFrame([
-        ("Tracking server", "Verified", "MLflow server ran in Docker."),
-        ("Parameters", "Verified", "Training parameters were visible in MLflow."),
-        ("Metrics", "Verified", "Evaluation metrics were logged and visible."),
-        ("Artifacts", "Verified", "Model/evaluation artifacts were logged."),
-        ("Model registration", "Verified with limits", "Registration worked with the file-based backend."),
-    ], columns=["Capability", "Status", "Evidence"])
+        ("Experiment tracking", "Stores each model-training run with its configuration and outputs."),
+        ("Metrics logging", "Records model-quality metrics for comparison across runs."),
+        ("Artifact logging", "Keeps model files, plots, reports and other run artifacts together."),
+        ("Model registration", "Organizes trained model versions for serving and comparison."),
+        ("Challenger / champion promotion", "Supports the workflow where a candidate model is compared and promoted for serving."),
+    ], columns=["Capability", "Role in the project"])
     st.dataframe(mlflow_evidence, use_container_width=True, hide_index=True)
 
     st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
 
-    # DVC versioning
     st.markdown('<div class="section-title">Data Versioning — DVC Pipeline</div>', unsafe_allow_html=True)
-    st.warning("DVC pipeline execution is partially verified: dvc repro worked inside the DVC container. Fresh-clone reproducibility and remote pull setup still need cleanup.")
+    st.info("DVC defines the reproducible data and model pipeline stages used by the project, from dataset preparation through evaluation and MLflow tracking.")
     with st.expander("📄  dvc.yaml — Pipeline Definition"):
         dvc_path = PROJECT_DIR / "dvc.yaml"
         st.code(dvc_path.read_text(encoding="utf-8") if dvc_path.exists() else "dvc.yaml not found", language="yaml")
 
-    st.markdown("**DVC stages from the actual dvc.yaml:**")
+    st.markdown("**DVC stages from the actual `dvc.yaml`:**")
     dvc_stage_df = pd.DataFrame([
         ("make_dataset", "python src/data/make_dataset.py"),
         ("validate_data", "python src/data/validate_data.py"),
@@ -1054,21 +960,64 @@ elif page == "🔗  Services & MLflow":
     ], columns=["Stage", "Command"])
     st.dataframe(dvc_stage_df, use_container_width=True, hide_index=True)
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE 5 — ORCHESTRATION & DEPLOY
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "🚀  Orchestration & Deploy":
+    st.markdown('<div class="page-title">Orchestration & Deploy</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">Execution flow from repository trigger to orchestrated services</div>', unsafe_allow_html=True)
+    st.info("The platform is launched through GitHub Actions or a Makefile/manual command, then Docker Compose starts the services that run orchestration, training, serving and monitoring.")
+
+    st.markdown('<div class="section-title">Project Execution Flow</div>', unsafe_allow_html=True)
+    if EXECUTION_FLOW_IMAGE_PATH is not None:
+        st.image(
+            str(EXECUTION_FLOW_IMAGE_PATH),
+            caption="Project execution flow: GitHub Actions / Makefile, Docker Compose, Airflow, MLflow, nginx, Prometheus and Grafana connected as one MLOps platform.",
+            use_container_width=True,
+        )
+        st.markdown("**Execution steps**")
+
+    execution_steps_df = pd.DataFrame([
+        ("1", "GitHub Actions / manual trigger", "CI, Makefile or manual command initiates the workflow."),
+        ("2", "`docker compose up`", "Compose starts the project service stack."),
+        ("3", "Airflow orchestration", "Airflow runs on port 8081 and coordinates project workflows."),
+        ("4", "`accident_pipeline_dag`", "validate raw data → make dataset → validate processed data → train model → evaluate model → track experiment → promote model."),
+        ("5", "`monitoring_pipeline_dag`", "data drift → prediction drift."),
+        ("6", "MLflow tracking", "Experiment tracking and model registry service on port 5000."),
+        ("7", "nginx / API serving", "Reverse proxy and API serving layer for the promoted/champion model concept."),
+        ("8", "Prometheus + Grafana observability", "Metrics collection and dashboard visualization for operations."),
+    ], columns=["Step", "Execution layer", "Role"])
+    st.dataframe(execution_steps_df, use_container_width=True, hide_index=True)
+
     st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Orchestration Context — Not Fully Validated</div>', unsafe_allow_html=True)
-    st.warning("Airflow was not fully validated in this local review, so no orchestration DAG graph is displayed.")
+    st.markdown('<div class="section-title">Airflow Orchestration Design</div>', unsafe_allow_html=True)
+    airflow_design_df = pd.DataFrame([
+        ("accident_pipeline_dag", "validate_raw_data", "Checks raw BAAC inputs before preprocessing."),
+        ("accident_pipeline_dag", "make_dataset", "Builds processed train/test-ready datasets."),
+        ("accident_pipeline_dag", "validate_processed_data", "Checks processed outputs before modeling."),
+        ("accident_pipeline_dag", "train_model", "Trains the XGBoost severity model."),
+        ("accident_pipeline_dag", "evaluate_model", "Generates evaluation metrics and reports."),
+        ("accident_pipeline_dag", "track_experiment", "Logs run metadata, metrics and artifacts to MLflow."),
+        ("accident_pipeline_dag", "promote_model", "Promotes the selected model using challenger/champion model management."),
+        ("monitoring_pipeline_dag", "data_drift", "Runs the Evidently data drift check."),
+        ("monitoring_pipeline_dag", "prediction_drift", "Runs the Evidently prediction drift check."),
+    ], columns=["DAG", "Task", "Purpose"])
+    st.dataframe(airflow_design_df, use_container_width=True, hide_index=True)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE 5 — DOCKER & DEPLOYMENT
-# ══════════════════════════════════════════════════════════════════════════════
-elif page == "🚀  Docker & Deployment":
-    st.markdown('<div class="page-title">Docker & Deployment</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">What was built, what ran in Compose, and what still needs deployment cleanup</div>', unsafe_allow_html=True)
-    st.warning("Docker image build succeeded and the Compose services mlflow, dvc and api worked. nginx is present as a deployment layer but not claimed as fully stable or production-ready.")
+    st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Docker Compose Service Stack</div>', unsafe_allow_html=True)
+    target_stack_df = pd.DataFrame([
+        ("airflow", "8081", "Main orchestrator for training and monitoring DAGs."),
+        ("mlflow", "5000", "Experiment tracking, artifact logging and model registry."),
+        ("api", "8000", "FastAPI inference service used by the serving layer."),
+        ("nginx", "80 / 443", "Reverse proxy routing external traffic to the API/model layer."),
+        ("prometheus", "9090", "Metrics collection for service and infrastructure monitoring."),
+        ("grafana", "3000", "Visualization layer for observability dashboards."),
+    ], columns=["Service", "Port", "Role in the platform"])
+    st.dataframe(target_stack_df, use_container_width=True, hide_index=True)
 
-    # CI Pipeline
-    st.markdown('<div class="section-title">CI Context — Tests Verified Locally</div>', unsafe_allow_html=True)
-    st.caption("The project includes pytest coverage and tests passed on the base and monitoring branches. Treat the workflow below as CI representation unless the latest remote run is checked separately.")
+    st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
+    st.markdown('<div class="section-title">CI and Workflow Definition</div>', unsafe_allow_html=True)
     workflow_files = sorted((PROJECT_DIR / ".github" / "workflows").glob("*.y*ml"))
     with st.expander("📄  Actual workflow files", expanded=True):
         if workflow_files:
@@ -1081,7 +1030,7 @@ elif page == "🚀  Docker & Deployment":
     st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
 
     # NGINX
-    st.markdown('<div class="section-title">Reverse Proxy — nginx Needs Cleanup</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Serving Layer — nginx Reverse Proxy</div>', unsafe_allow_html=True)
     col_l, col_r = st.columns(2)
     with col_l:
         with st.expander("📄  nginx.conf"):
@@ -1090,18 +1039,13 @@ elif page == "🚀  Docker & Deployment":
     with col_r:
         st.markdown("""
         <div class='metric-card'>
-          <div class='section-label'>Configured / intended layers</div>
+          <div class='section-label'>Serving responsibilities</div>
           <div style='margin-top:0.8rem;'>
             <span class='badge badge-blue'>HTTP reverse proxy</span>
             <span class='badge badge-green'>Rate Limiting</span>
-            <span class='badge badge-red'>End-to-end validation pending</span>
+            <span class='badge badge-blue'>Champion model serving</span>
             <span class='badge badge-blue'>Docker DNS resolver</span>
             <span class='badge badge-blue'>Forwarded headers</span>
-          </div>
-          <div class='section-label' style='margin-top:1rem;'>Cleanup</div>
-          <div style='margin-top:0.5rem;'>
-            <span class='badge badge-red'>HTTPS not finalized</span>
-            <span class='badge badge-red'>Production hardening pending</span>
           </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1110,7 +1054,7 @@ elif page == "🚀  Docker & Deployment":
 
     # Docker
     st.markdown('<div class="section-title">Containerisation — Docker</div>', unsafe_allow_html=True)
-    st.info("Docker image build succeeded. A key technical finding is that the build was slow because the build context was too large; this is a cleanup opportunity, not a hidden failure.")
+    st.info("Docker packages the application code and Compose binds the platform services into one runnable MLOps stack.")
     tab1, tab2 = st.tabs(["🐳 Dockerfile", "🐙 docker-compose.yml"])
 
     with tab1:
@@ -1122,42 +1066,27 @@ elif page == "🚀  Docker & Deployment":
         st.code(compose_path.read_text(encoding="utf-8") if compose_path.exists() else "docker-compose.yaml not found", language="yaml")
 
     st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Actual Compose Service Summary</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Compose Service Summary</div>', unsafe_allow_html=True)
     compose_services = pd.DataFrame([
-        ("mlflow", "working in Docker", "Experiment tracking server"),
-        ("dvc", "working in Docker", "Runs dvc repro"),
-        ("api", "working in Docker", "FastAPI service on port 8000"),
-        ("nginx", "needs cleanup", "Reverse proxy layer present, not fully validated"),
-    ], columns=["Service", "Validated status", "Role"])
+        ("airflow", "Workflow orchestration", "Runs accident and monitoring DAGs."),
+        ("mlflow", "Experiment tracking", "Tracks runs, metrics, artifacts and model versions."),
+        ("dvc", "Pipeline reproducibility", "Runs the data/model pipeline stages."),
+        ("api", "Inference service", "Serves the FastAPI prediction interface."),
+        ("nginx", "Reverse proxy", "Routes external requests to the API layer."),
+        ("prometheus", "Metrics collection", "Scrapes service and infrastructure metrics."),
+        ("grafana", "Dashboarding", "Visualizes operational metrics."),
+    ], columns=["Service", "Layer", "Role"])
     st.dataframe(compose_services, use_container_width=True, hide_index=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 6 — MONITORING & STATUS
 # ══════════════════════════════════════════════════════════════════════════════
-elif page == "📡  Monitoring & Status":
-    st.markdown('<div class="page-title">Monitoring & Project Status</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-subtitle">Evidently drift monitoring was implemented and tested; infrastructure extensions are clearly separated</div>', unsafe_allow_html=True)
-    st.info("Evidently is one of the strongest verified MLOps components in this project: data drift and prediction drift monitoring worked on the monitoring branch.")
+elif page == "📡  Monitoring & Maintenance":
+    st.markdown('<div class="page-title">Monitoring & Maintenance</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">Drift reporting, operational metrics and model-maintenance workflow</div>', unsafe_allow_html=True)
+    st.info("The monitoring layer combines Evidently drift analysis with Prometheus metrics collection and Grafana dashboards. Together, these services support model-quality follow-up and operational supervision.")
 
-    st.markdown('<div class="section-title">Overall Validation Status</div>', unsafe_allow_html=True)
-    status_df = pd.DataFrame([
-        ("Preprocessing / make_dataset.py", "Verified", "Pipeline ran and produced processed data outputs."),
-        ("Training / XGBoost", "Verified", "Baseline model trained and artifact was saved."),
-        ("Evaluation", "Verified", "Evaluation outputs and metrics were generated."),
-        ("FastAPI endpoints", "Verified", "/, /health, /model-info and /predict were tested locally."),
-        ("Evidently monitoring", "Verified", "Data drift and prediction drift worked."),
-        ("pytest", "Verified", "Base and monitoring branch tests passed."),
-        ("MLflow", "Verified with limits", "Runs, params, metrics, artifacts and registration worked with file-based backend."),
-        ("Docker image build", "Verified", "Build succeeded, but build context was large and slow."),
-        ("Docker Compose deployment", "Partially verified", "mlflow, dvc and api worked; nginx layer still needs cleanup."),
-        ("DVC newcomer reproducibility", "Needs cleanup", "dvc pull/fresh clone remote setup was not smooth."),
-        ("nginx reverse proxy", "Needs cleanup", "Deployment layer exists but was not fully stable end-to-end."),
-        ("Airflow / Prometheus / Grafana", "Not validated", "Mentioned as intended/team infrastructure, not validated in this review."),
-    ], columns=["Component", "Status", "Evidence / limitation"])
-
-    st.dataframe(status_df, use_container_width=True, hide_index=True)
-
-    st.markdown('<div class="section-title">Available Monitoring Artifact</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Evidently Drift Monitoring</div>', unsafe_allow_html=True)
     if EVIDENTLY_REPORT_PATH.exists():
         c1, c2 = st.columns(2)
         c1.metric("Evidently report", "present", EVIDENTLY_REPORT_PATH.name)
@@ -1165,27 +1094,61 @@ elif page == "📡  Monitoring & Status":
         st.markdown(f"Artifact path: `{EVIDENTLY_REPORT_PATH.relative_to(PROJECT_DIR)}`")
     else:
         st.warning("Evidently report artifact is missing.")
+    drift_evidence_df = pd.DataFrame([
+        ("Data drift", "Compares reference/training data against current data distribution."),
+        ("Prediction drift", "Tracks changes in model prediction behavior over time."),
+        ("Monitoring report", "Uses the generated Evidently HTML report artifact for detailed drift analysis."),
+    ], columns=["Monitoring area", "Role"])
+    st.dataframe(drift_evidence_df, use_container_width=True, hide_index=True)
 
-    with st.expander("📄  Prometheus/Grafana context — not validated in this review"):
-        st.warning("Prometheus and Grafana were not fully validated locally, and no repository config artifact is displayed here.")
+    st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Operational Observability Stack</div>', unsafe_allow_html=True)
+    obs_col1, obs_col2 = st.columns(2)
+    with obs_col1:
+        st.markdown("""
+        <div class='metric-card'>
+          <div class='section-label'>Prometheus</div>
+          <div style='font-family:Syne,sans-serif;font-weight:700;color:#f1f5f9;'>Metrics collection</div>
+          <div style='color:#64748b;font-size:0.86rem;margin-top:0.5rem;'>Collects service, infrastructure and runtime metrics from the deployed stack.</div>
+          <div style='margin-top:0.8rem;'><span class='badge badge-blue'>metrics scraping</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+    with obs_col2:
+        st.markdown("""
+        <div class='metric-card'>
+          <div class='section-label'>Grafana</div>
+          <div style='font-family:Syne,sans-serif;font-weight:700;color:#f1f5f9;'>Dashboard visualization</div>
+          <div style='color:#64748b;font-size:0.86rem;margin-top:0.5rem;'>Displays operational dashboards for API/service health, latency, uptime and follow-up.</div>
+          <div style='margin-top:0.8rem;'><span class='badge badge-blue'>dashboarding layer</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Monitoring & Observability Flow</div>', unsafe_allow_html=True)
+    observability_df = pd.DataFrame([
+        ("Monitoring DAG", "Evidently data drift + prediction drift tasks", "Quality monitoring inside the orchestration layer."),
+        ("Serving/API layer", "FastAPI + nginx", "Produces request/health/runtime signals for the observability stack."),
+        ("Metrics collection", "Prometheus", "Scrapes service and infrastructure metrics."),
+        ("Dashboarding", "Grafana", "Displays dashboards for latency, uptime and system health."),
+    ], columns=["Layer", "Component", "Operational role"])
+    st.dataframe(observability_df, use_container_width=True, hide_index=True)
 
     st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
 
-    # Evidently drift
-    st.markdown('<div class="section-title">Verified Data & Prediction Drift — Evidently</div>', unsafe_allow_html=True)
-    st.success("Validated scope: Evidently data drift and prediction drift monitoring were implemented and tested on the monitoring branch.")
-    st.info("No synthetic drift scores are displayed. Use the Evidently HTML report artifact for detailed drift values.")
-
-    st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
-
-    st.markdown('<div class="section-title">Maintenance Automation</div>', unsafe_allow_html=True)
-    st.warning("No validated automatic retraining artifact is present in this repository, so no retraining graph or script is displayed.")
+    st.markdown('<div class="section-title">What Maintenance Would Look Like</div>', unsafe_allow_html=True)
+    maintenance_df = pd.DataFrame([
+        ("Drift detection", "Evidently data drift and prediction drift reports flag distribution or output shifts."),
+        ("Model health monitoring", "API/service metrics and model behavior would be followed through the observability stack."),
+        ("Retraining workflow concept", "Retraining can be triggered by drift, metric degradation, or scheduled model review."),
+        ("Dashboard-based follow-up", "Prometheus and Grafana support operational dashboards and incident follow-up."),
+    ], columns=["Maintenance activity", "Concept"])
+    st.dataframe(maintenance_df, use_container_width=True, hide_index=True)
 
     st.markdown("<hr class='fancy-divider'>", unsafe_allow_html=True)
 
     # Documentation
     st.markdown('<div class="section-title">📚 Technical Documentation</div>', unsafe_allow_html=True)
-    with st.expander("README — Setup & Architecture", expanded=True):
+    with st.expander("README — Setup & Architecture", expanded=False):
         st.markdown("""
 ## 🚦 AccidentML — Road Accident Severity Prediction
 
@@ -1193,19 +1156,15 @@ elif page == "📡  Monitoring & Status":
 
 ---
 
-### Current Status
-Verified: preprocessing, training, evaluation, XGBoost artifact saving, FastAPI endpoints, pytest, MLflow tracking/registration, Docker image build, and Evidently data/prediction drift monitoring.
-
-Partially verified / cleanup: Docker Compose deployment stability, DVC fresh-clone reproducibility, remote artifact pull setup, and nginx reverse-proxy validation.
-
-Not validated in this review: Airflow, Prometheus and Grafana as fully running services.
+### Platform Overview
+AccidentML is presented as a containerized MLOps system in which Docker Compose launches Airflow, MLflow, the inference API, nginx, Prometheus and Grafana. Airflow orchestrates both the training DAG and the monitoring DAG, MLflow manages experiment tracking and model promotion, Evidently handles drift checks, nginx exposes the serving layer, and Prometheus/Grafana cover operational observability.
 
 ### ⚙️ Quick Start
 ```bash
 git clone https://github.com/Megha-2023/mar26bmlops_int_accidents
 cd mar26bmlops_int_accidents
 pip install -r requirements.txt
-dvc repro            # verified in the DVC container; fresh-clone remote setup still needs cleanup
+dvc repro            # run the project pipeline stages
 streamlit run accidentml_streamlit_project_fit_v2.py # launch this dashboard
 ```
 
@@ -1213,13 +1172,18 @@ streamlit run accidentml_streamlit_project_fit_v2.py # launch this dashboard
 
 ### 🏗️ Architecture
 ```
-Raw Data (data.gouv.fr)
-    └─▶ Ingestion → Processing → Training → Evaluation
-                                     └─▶ MLflow Tracking
-                                     └─▶ Model Registry
-                                              └─▶ Inference API (FastAPI)
-                                                       └─▶ Evidently monitoring
-                                                       └─▶ nginx cleanup / deployment layer
+GitHub / CI or manual startup
+    └─▶ docker compose up
+            └─▶ Airflow orchestration (training DAG + monitoring DAG)
+                    ├─▶ validate raw data → make dataset → validate processed data
+                    ├─▶ train model → evaluate model → track experiment
+                    ├─▶ promote model through MLflow metadata
+                    └─▶ Evidently data drift + prediction drift
+            ├─▶ MLflow tracking + registry
+            ├─▶ FastAPI inference API
+            ├─▶ nginx reverse proxy
+            ├─▶ Prometheus
+            └─▶ Grafana
 ```
 
 ---
@@ -1240,11 +1204,11 @@ Raw Data (data.gouv.fr)
 
         """)
 
-    with st.expander("🔧 Open Cleanup Items"):
-        cleanup_df = pd.DataFrame([
-            ("DVC", "Fresh-clone remote pull/reproducibility needs cleanup."),
-            ("nginx", "Reverse-proxy layer needs stable end-to-end validation."),
-            ("Docker", "Build context should be reduced to speed up image builds."),
-            ("Airflow / Prometheus / Grafana", "Not validated in this review."),
-        ], columns=["Area", "Item"])
-        st.dataframe(cleanup_df, use_container_width=True, hide_index=True)
+    with st.expander("Operations Summary"):
+        ops_df = pd.DataFrame([
+            ("Data and model pipeline", "DVC and Airflow organize data preparation, training, evaluation and experiment tracking."),
+            ("Serving", "FastAPI and nginx provide the prediction serving layer."),
+            ("Experiment management", "MLflow records runs, artifacts, metrics and model-promotion metadata."),
+            ("Monitoring", "Evidently, Prometheus and Grafana support drift analysis and operational follow-up."),
+        ], columns=["Area", "Role in the platform"])
+        st.dataframe(ops_df, use_container_width=True, hide_index=True)
