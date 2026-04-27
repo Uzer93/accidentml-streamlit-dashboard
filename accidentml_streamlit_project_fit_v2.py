@@ -1083,8 +1083,6 @@ elif page == "📡  Monitoring & Maintenance":
         AccidentML is presented as more than a trained model. The system is tested with unit tests, served with FastAPI,
         tracked and managed with MLflow, structured with DVC, orchestrated with Airflow, launched with Docker Compose,
         routed with nginx, and monitored with Evidently, Prometheus and Grafana.
-        <br><br>
-        <b>Main defence message:</b> the project is tested, reproducible, service-based, orchestrated, deployable and monitorable.
       </div>
     </div>
     """, unsafe_allow_html=True)
