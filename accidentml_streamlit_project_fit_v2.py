@@ -745,7 +745,7 @@ elif page == "🤖  Baseline Model":
         ("Model loading", "test_model_loader.py", "2", "Checks successful model loading and clear failure behavior when a model artifact is missing."),
         ("Training workflow", "test_train_model.py", "1", "Verifies that training reads the expected files, trains the model, evaluates outputs, and saves the artifact."),
         ("Evaluation workflow", "test_evaluate_model.py", "3", "Checks metric generation, report paths, and evaluation handling."),
-    ], columns=["Area", "Evidence file", "Tests", "What the jury should understand"])
+    ], columns=["Area", "Evidence file", "Tests", "Validation coverage"])
     st.dataframe(coverage_df, use_container_width=True, hide_index=True)
 
     st.markdown("""
