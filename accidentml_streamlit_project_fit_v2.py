@@ -765,9 +765,9 @@ elif page == "🤖  Baseline Model":
     """, unsafe_allow_html=True)
 
     coverage_df = pd.DataFrame([
-        ("FastAPI endpoints", "test_api.py", str(api_tests), "Checks API routes, prediction behavior, validation failures, and service error handling."),
-        ("API schemas", "test_schemas.py", str(schema_tests), "Validates field types, bounds, the `int` alias for `intersection_type`, and the `PredictionResponse` structure."),
-        ("Training workflow", "test_train_model.py", str(train_tests), "Verifies that training reads the expected files, fits the model, evaluates outputs, and saves the artifact."),
+        ("FastAPI endpoints", "test_api.py", str(api_tests), "Checks the FastAPI service behavior."),
+        ("API schemas", "test_schemas.py", str(schema_tests), "Checks the request and response contracts."),
+        ("Training workflow", "test_train_model.py", str(train_tests), "Checks the model training workflow."),
     ], columns=["Area", "Evidence file", "Tests", "Validation coverage"])
     st.dataframe(coverage_df, use_container_width=True, hide_index=True)
 
@@ -930,14 +930,14 @@ elif page == "🔗  Services & MLflow":
 
     st.markdown('<div class="section-title">Service Responsibilities</div>', unsafe_allow_html=True)
     execution_flow_df = pd.DataFrame([
-        ("CI validation", "GitHub Actions CI", "Runs `.github/workflows/ci.yml` on pull requests, manual dispatch, and pushes to `main`, `master`, `ci`, and `feature/airflow_grafana_ci`. It is not the project runtime entry point."),
-        ("Runtime entry point", "Docker Compose", "Defines MLflow, model training, FastAPI, nginx, Evidently drift monitoring, and the optional Airflow profile with Postgres."),
-        ("Orchestration", "Airflow", "Runs the lightweight project DAG with `make_dataset` followed by `validate_data`."),
-        ("Experiment management", "MLflow", "Tracks parameters, metrics, artifacts, reports and model versions."),
-        ("Pipeline reproducibility", "DVC", "Formalizes the data and model pipeline stages."),
-        ("Inference", "FastAPI", "Serves 24-feature predictions through the configured model loader."),
-        ("Serving gateway", "nginx", "Routes external requests to the API, supports HTTPS/SSL security, and applies request rate limiting."),
-        ("Future project", "Prometheus + Grafana", "Not implemented in the current repository; planned as future observability/dashboard work."),
+        ("CI validation", "GitHub Actions CI", "Runs the automated checks for the project."),
+        ("Runtime entry point", "Docker Compose", "Starts the project services together."),
+        ("Orchestration", "Airflow", "Runs `make_dataset`, then `validate_data`."),
+        ("Experiment management", "MLflow", "Stores training runs, metrics, artifacts, and model versions."),
+        ("Pipeline reproducibility", "DVC", "Defines the data and model pipeline steps."),
+        ("Inference", "FastAPI", "Serves model predictions through an API."),
+        ("Serving gateway", "nginx", "Routes outside traffic to the API."),
+        ("Future project", "Prometheus + Grafana", "Planned for future monitoring dashboards."),
     ], columns=["Layer", "Service", "Role"])
     st.dataframe(execution_flow_df, use_container_width=True, hide_index=True)
 
@@ -945,10 +945,10 @@ elif page == "🔗  Services & MLflow":
     st.markdown('<div class="section-title">MLflow Experiment Tracking & Registry</div>', unsafe_allow_html=True)
     st.info("MLflow gives traceability: it helps answer which model was trained, with which configuration, and what performance/artifacts were produced.")
     mlflow_evidence = pd.DataFrame([
-        ("Experiment tracking", "Stores each model-training run with its configuration and outputs."),
-        ("Metrics logging", "Records model-quality metrics for comparison across runs."),
-        ("Artifact logging", "Keeps model files, plots, reports and other run artifacts together."),
-        ("Model registration", "Organizes trained model versions for serving and comparison."),
+        ("Experiment tracking", "Saves each training run."),
+        ("Metrics logging", "Saves model performance scores."),
+        ("Artifact logging", "Saves model files, plots, and reports."),
+        ("Model registration", "Stores model versions."),
     ], columns=["Capability", "Role in the project"])
     st.dataframe(mlflow_evidence, use_container_width=True, hide_index=True)
 
@@ -997,11 +997,11 @@ elif page == "🚀  Orchestration & Deploy":
     st.markdown('<div class="section-title">What CI Validates</div>', unsafe_allow_html=True)
     st.info("The current workflow runs on pull requests, manual `workflow_dispatch`, and pushes to `main`, `master`, `ci`, and `feature/airflow_grafana_ci`.")
     ci_validation_df = pd.DataFrame([
-        ("1", "Unit tests", "Python 3.12 with `pytest -q`; the current test suite has 17 detected unit tests."),
-        ("2", "Docker Compose config", "`docker compose config` validates service configuration syntax."),
-        ("3", "API Docker image", "`docker build -f Dockerfile -t accident-api:ci .` validates the API image build."),
-        ("4", "Airflow Docker image", "`docker build -f Dockerfile.airflow -t accident-airflow:ci .` validates the Airflow image build."),
-        ("5", "Airflow DAG import/list", "`airflow db init && airflow dags list` validates DAG imports after metadata DB initialization."),
+        ("1", "Unit tests", "Runs the 17 current unit tests."),
+        ("2", "Docker Compose config", "Checks that the service setup is valid."),
+        ("3", "API Docker image", "Checks that the API image can be built."),
+        ("4", "Airflow Docker image", "Checks that the Airflow image can be built."),
+        ("5", "Airflow DAG import/list", "Checks that Airflow can load the project DAG."),
     ], columns=["Order", "CI check", "Current behavior"])
     st.dataframe(ci_validation_df, use_container_width=True, hide_index=True)
     st.markdown("""
@@ -1025,8 +1025,8 @@ elif page == "🚀  Orchestration & Deploy":
     st.markdown('<div class="section-title">Airflow Orchestration Design</div>', unsafe_allow_html=True)
     st.info("Airflow now represents the lightweight data orchestration layer shown in the project flow: it builds the dataset and then validates it. Full model training and experiment tracking sit in the separate ML pipeline rather than inside this Airflow DAG description.")
     airflow_design_df = pd.DataFrame([
-        ("dags/accident_pipeline_dag.py", "accident_pipeline / make_dataset", "Runs `python /opt/airflow/src/data/make_dataset.py` to build processed train/test-ready datasets."),
-        ("dags/accident_pipeline_dag.py", "accident_pipeline / validate_data", "Runs `python /opt/airflow/src/data/validate_data.py` after `make_dataset` to validate the processed dataset."),
+        ("dags/accident_pipeline_dag.py", "accident_pipeline / make_dataset", "Builds the processed train and test datasets."),
+        ("dags/accident_pipeline_dag.py", "accident_pipeline / validate_data", "Checks that the processed data is valid."),
     ], columns=["DAG file", "DAG id / Task", "Purpose"])
     st.dataframe(airflow_design_df, use_container_width=True, hide_index=True)
 
@@ -1065,13 +1065,10 @@ elif page == "📡  Monitoring & Maintenance":
         c1.metric("Data drift report", "present", EVIDENTLY_REPORT_PATH.name)
         c2.metric("Report size", f"{EVIDENTLY_REPORT_PATH.stat().st_size / 1024 / 1024:.1f} MB", "HTML artifact")
         st.markdown(f"Artifact path: `{rel_path(EVIDENTLY_REPORT_PATH)}`")
-    else:
-        st.warning("Data drift report artifact is missing. Monitoring reports are generated by the API/report-generation code and may not exist until that code has run.")
-
     drift_evidence_df = pd.DataFrame([
-        ("Data drift report", "`/monitor/report/data`", "Compares reference/training data against current data distribution."),
-        ("Prediction drift report", "`/monitor/report/prediction`", "Adds model predictions and tracks changes in prediction behavior."),
-        ("Monitoring report artifacts", "metrics/reports/*.html", "Generated by Evidently report-generation code; drift is a signal for investigation, not automatic proof that the model is wrong."),
+        ("Data drift report", "`/monitor/report/data`", "Checks if input data has changed."),
+        ("Prediction drift report", "`/monitor/report/prediction`", "Checks if model predictions have changed."),
+        ("Monitoring report artifacts", "metrics/reports/*.html", "Stores the generated Evidently reports."),
     ], columns=["Monitoring area", "Role", "Presentation point"])
     st.dataframe(drift_evidence_df, use_container_width=True, hide_index=True)
 
